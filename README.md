@@ -1,9 +1,9 @@
 ## What is this?
 
-A simple Read Through Cache implementation allowing to wrap your slow function and cache it's responses in redis.
+A simple Read-Through Cache implementation allowing to wrap your slow function and cache it's responses in Redis.
 
 # Installation
-`npm i read-through-cache --save`
+`npm i redis-read-through-cache --save`
 
 My slow function ...
 ```javascript
