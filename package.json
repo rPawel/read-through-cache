@@ -1,0 +1,31 @@
+{
+  "name": "read-through-cache",
+  "version": "1.0.0",
+  "description": "A simple Read Through Cache implementation allowing to wrap your slow functction and cache it's responses in redis.",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "keywords": [],
+  "author": "rPawel",
+  "license": "ISC",
+  "dependencies": {
+    "redis": "^3.0.2",
+    "request": "^2.88.2"
+  },
+  "devDependencies": {
+    "jest": "^26.4.0",
+    "redis-mock": "^0.51.0"
+  },
+  "directories": {
+    "test": "test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rPawel/read-through-cache.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rPawel/read-through-cache/issues"
+  },
+  "homepage": "https://github.com/rPawel/read-through-cache#readme"
+}
