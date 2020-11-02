@@ -11,13 +11,14 @@ const redis = require("redis-mock"),
 describe('get - upon checking for key', () => {
     const testKey = 'testKey'
     const testData = {param: "value"}
+    const emptyData = {param: "value"}
     const callTime = Math.round(new Date().getTime() / 1000)
     const rawTestDataWithMeta = {
         data: testData,
         meta: {created: callTime}
     }
     const rawInvalidTestDataWithMeta = {
-        data: {},
+        data: emptyData,
         meta: {created: callTime}
     }
 
@@ -91,6 +92,30 @@ describe('get - upon checking for key', () => {
     it('readFunction is called, data saving fails, data still returned', async () => {
 
         await readThroughCache.get(testKey, readFunctionReturningData(testData));
+    })
+
+    it('readFunction is called, cache is empty, read data is invalid hence not stored, data is returned', async () => {
+
+        let data = await readThroughCache
+            .get(testKey, readFunctionReturningData(testData), 0, () => false, () => false)
+
+        let actualInRedis = await getAsync(testKey);
+
+        expect(data).toEqual(testData)
+        expect(actualInRedis).toEqual(null)
+    })
+
+    it('readFunction is called, cached data is invalid, read data is invalid hence not stored, data is returned', async () => {
+
+        await setAsync(testKey, JSON.stringify(rawInvalidTestDataWithMeta))
+
+        let data = await readThroughCache
+            .get(testKey, readFunctionReturningData(testData), 0, () => false, () => false)
+
+        let actualInRedis = await getAsync(testKey);
+
+        expect(data).toEqual(testData)
+        expect(JSON.parse(actualInRedis).data).toEqual(emptyData)
     })
 
     const readFunctionReturningData = data => new Promise(resolve => resolve(data));

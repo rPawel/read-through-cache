@@ -36,4 +36,5 @@ readThroughCache
 * *key* - Cache key name
 * *readFunction* - The actual function that returns a promise that fetches the data.
 * *ttl* - Optional cache expiration time in seconds.
-* *cacheValidator* - Optional function returning boolean that checks if cache data is valid. Returning failue forces to fetch data from readFunction and store it in cache.
+* *cachedDataValidator* - Optional function returning boolean that checks if cache data is valid. Returning false forces to fetch data from readFunction.
+* *freshDataValidator* - Optional function returning boolean that checks if fresh data is valid. Returning false skips saving to cache.
