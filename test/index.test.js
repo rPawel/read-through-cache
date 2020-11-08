@@ -11,16 +11,9 @@ const redis = require("redis-mock"),
 describe('get - upon checking for key', () => {
     const testKey = 'testKey'
     const testData = {param: "value"}
+    const testAltData = {param: "altValue"}
     const emptyData = {param: "value"}
     const callTime = Math.round(new Date().getTime() / 1000)
-    const rawTestDataWithMeta = {
-        data: testData,
-        meta: {created: callTime}
-    }
-    const rawInvalidTestDataWithMeta = {
-        data: emptyData,
-        meta: {created: callTime}
-    }
 
     beforeEach(done => {
         redisClient.del(testKey, () => done());
@@ -49,7 +42,7 @@ describe('get - upon checking for key', () => {
 
     it('cache has responded with data, data is valid', done => {
 
-        setAsync(testKey, JSON.stringify(rawTestDataWithMeta)).then(() => {
+        setAsync(testKey, JSON.stringify(toRaw(testData))).then(() => {
 
             readThroughCache
                 .get(testKey, readFunctionReturningData(null), 0)
@@ -63,7 +56,7 @@ describe('get - upon checking for key', () => {
 
     it('cache has responded with data, data is invalid, calling readFunction', done => {
 
-        setAsync(testKey, JSON.stringify(rawInvalidTestDataWithMeta)).then(() => {
+        setAsync(testKey, JSON.stringify(toRaw(emptyData))).then(() => {
 
             readThroughCache
                 .get(testKey, readFunctionReturningData(testData), 0, () => false)
@@ -107,7 +100,7 @@ describe('get - upon checking for key', () => {
 
     it('readFunction is called, cached data is invalid, read data is invalid hence not stored, data is returned', async () => {
 
-        await setAsync(testKey, JSON.stringify(rawInvalidTestDataWithMeta))
+        await setAsync(testKey, JSON.stringify(toRaw(emptyData)))
 
         let data = await readThroughCache
             .get(testKey, readFunctionReturningData(testData), 0, () => false, () => false)
@@ -118,9 +111,29 @@ describe('get - upon checking for key', () => {
         expect(JSON.parse(actualInRedis).data).toEqual(emptyData)
     })
 
+    it('readFunction is called, cached data is unstable, read data is valid but not stored, data is returned', async () => {
+
+        await setAsync(testKey, JSON.stringify(toRaw(testAltData)))
+
+        let data = await readThroughCache
+            .get(testKey, readFunctionReturningData(testData), 0, () => ReadThroughCache.Unstable, () => false)
+
+        let actualInRedis = await getAsync(testKey);
+
+        expect(data).toEqual(testData)
+        expect(JSON.parse(actualInRedis).data).toEqual(testAltData)
+    })
+
     const readFunctionReturningData = data => new Promise(resolve => resolve(data));
 
     const readFunctionReturningAnError = err => new Promise((resolve, reject) => reject(new Error(err)));
+
+    const toRaw = (someData) => {
+        return {
+            data: someData,
+            meta: {created: callTime}
+        }
+    };
 
 
     afterAll(done => {

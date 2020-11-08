@@ -2,6 +2,10 @@
 const {promisify} = require("util");
 
 class ReadThroughCache {
+    static Unstable = 2;
+    static Valid = true;
+    static Invalid = false;
+
     constructor(client) {
         this.setClient(client)
     }
@@ -31,20 +35,20 @@ class ReadThroughCache {
             const parsedJson = JSON.parse(redisData)
             const data = parsedJson.data;
             const meta = parsedJson.meta;
-            if (cachedDataValidator(data, meta)) {
-                return data;
-            } else {
-                return this.readData(key, ttl, readFunction, freshDataValidator);
+            switch (cachedDataValidator(data, meta)) {
+                case ReadThroughCache.Valid: return data;
+                case ReadThroughCache.Unstable: return this.readData(key, ttl, readFunction, freshDataValidator, true);
+                default: return this.readData(key, ttl, readFunction, freshDataValidator, false);
             }
         } catch (e) {
             return this.readData(key, ttl, readFunction, freshDataValidator);
         }
     }
 
-    async readData(key, ttl, readFunction, freshDataValidator) {
+    async readData(key, ttl, readFunction, freshDataValidator, skipSaving) {
         let freshData = await readFunction;
 
-        if (freshDataValidator(freshData)) {
+        if (!skipSaving && freshDataValidator(freshData)) {
 
             const callTime = Math.round(new Date().getTime() / 1000);
             let dataWithMeta = {data: freshData, meta: {created: callTime}}
