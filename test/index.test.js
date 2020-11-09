@@ -9,11 +9,12 @@ const redis = require("redis-mock"),
     setAsync = promisify(redisClient.set).bind(redisClient);
 
 describe('get - upon checking for key', () => {
-    const testKey = 'testKey'
-    const testData = {param: "value"}
-    const testAltData = {param: "altValue"}
-    const emptyData = {param: "value"}
-    const callTime = Math.round(new Date().getTime() / 1000)
+    const testKey = 'testKey';
+    const testData = {param: "value"};
+    const testData2 = {param: "value2"};
+    const emptyData = {};
+    const now = Math.round(new Date().getTime() / 1000);
+    const anHourAgo = now - 3600;
 
     beforeEach(done => {
         redisClient.del(testKey, () => done());
@@ -23,9 +24,9 @@ describe('get - upon checking for key', () => {
         faultyReadThroughCache
             .get(testKey, readFunctionReturningData(testData), 0)
             .then((data) => {
-                expect(data).toEqual(testData)
+                expect(data).toEqual(testData);
                 done();
-            })
+            });
 
     })
 
@@ -34,22 +35,22 @@ describe('get - upon checking for key', () => {
         readThroughCache
             .get(testKey, readFunctionReturningData(testData), 0)
             .then((data) => {
-                expect(data).toEqual(testData)
+                expect(data).toEqual(testData);
                 done();
-            })
+            });
 
     })
 
     it('cache has responded with data, data is valid', done => {
 
-        setAsync(testKey, JSON.stringify(toRaw(testData))).then(() => {
+        setAsync(testKey, JSON.stringify(toRaw(testData, anHourAgo, anHourAgo))).then(() => {
 
             readThroughCache
                 .get(testKey, readFunctionReturningData(null), 0)
                 .then((data) => {
-                    expect(data).toEqual(testData)
+                    expect(data).toEqual(testData);
                     done();
-                })
+                });
 
         })
     })
@@ -65,20 +66,23 @@ describe('get - upon checking for key', () => {
                     done();
                 });
 
-        })
+        });
     })
 
     it('readFunction is called, but it returns an error', async () => {
 
         let error = 'read function error';
-        await expect(readThroughCache.get(testKey, readFunctionReturningAnError(error))).rejects.toThrow()
+        await expect(readThroughCache.get(testKey, readFunctionReturningAnError(error))).rejects.toThrow();
     })
 
     it('readFunction is called, valid data is stored in cache and returned', async () => {
 
         await readThroughCache.get(testKey, readFunctionReturningData(testData));
-        let actualInRedis = await getAsync(testKey);
-        expect(JSON.parse(actualInRedis).data).toEqual(testData)
+        let actualInRedis = JSON.parse(await getAsync(testKey));
+        expect(actualInRedis.data).toEqual(testData);
+        expect(actualInRedis.meta.created).toBeCloseTo(now, -1)
+        expect(actualInRedis.meta.updated).toBeCloseTo(now, -1)
+
     })
 
 
@@ -89,52 +93,81 @@ describe('get - upon checking for key', () => {
 
     it('readFunction is called, cache is empty, read data is invalid hence not stored, data is returned', async () => {
 
-        let data = await readThroughCache
-            .get(testKey, readFunctionReturningData(testData), 0, () => false, () => false)
+        let data = await readThroughCache.get(testKey, readFunctionReturningData(testData), 0, () => false, () => false);
 
         let actualInRedis = await getAsync(testKey);
 
-        expect(data).toEqual(testData)
-        expect(actualInRedis).toEqual(null)
+        expect(data).toEqual(testData);
+        expect(actualInRedis).toEqual(null);
     })
 
-    it('readFunction is called, cached data is invalid, read data is invalid hence not stored, data is returned', async () => {
+    it('readFunction is called, cached data is invalid, read data is invalid hence not stored, cache is removed, data is returned', async () => {
 
-        await setAsync(testKey, JSON.stringify(toRaw(emptyData)))
+        await setAsync(testKey, JSON.stringify(toRaw(emptyData, anHourAgo, anHourAgo)));
 
-        let data = await readThroughCache
-            .get(testKey, readFunctionReturningData(testData), 0, () => false, () => false)
+        let data = await readThroughCache.get(testKey, readFunctionReturningData(testData), 0, () => false, () => false);
 
         let actualInRedis = await getAsync(testKey);
 
-        expect(data).toEqual(testData)
-        expect(JSON.parse(actualInRedis).data).toEqual(emptyData)
+        expect(data).toEqual(testData);
+        expect(actualInRedis).toEqual(null);
     })
 
     it('readFunction is called, cached data is unstable, read data is valid but not stored, data is returned', async () => {
 
-        await setAsync(testKey, JSON.stringify(toRaw(testAltData)))
+        await setAsync(testKey, JSON.stringify(toRaw(testData2, anHourAgo, anHourAgo)));
 
-        let data = await readThroughCache
-            .get(testKey, readFunctionReturningData(testData), 0, () => ReadThroughCache.Unstable, () => false)
+        let data = await readThroughCache.get(testKey, readFunctionReturningData(testData), 0, () => ReadThroughCache.Unstable, () => false);
+
+        let actualInRedis = JSON.parse(await getAsync(testKey));
+
+        expect(data).toEqual(testData);
+        expect(actualInRedis.data).toEqual(testData2);
+        expect(actualInRedis.meta.created).toBeCloseTo(anHourAgo, -1)
+        expect(actualInRedis.meta.updated).toBeCloseTo(anHourAgo, -1)
+    })
+
+    it('readFunction is called, cached data was valid but has just expired, read data is invalid hence the cache is pruned', async () => {
+
+        await setAsync(testKey, JSON.stringify(toRaw(testData, anHourAgo, anHourAgo)));
+
+        let data = await readThroughCache.get(testKey, readFunctionReturningData(testData), 60, () => true, () => false);
 
         let actualInRedis = await getAsync(testKey);
 
-        expect(data).toEqual(testData)
-        expect(JSON.parse(actualInRedis).data).toEqual(testAltData)
+        expect(data).toEqual(testData);
+        expect(actualInRedis).toEqual(null)
+
+    })
+
+    it('readFunction is called, cached data was valid but has just expired, read data is valid hence the cache is extended', async () => {
+
+        await setAsync(testKey, JSON.stringify(toRaw(testData, anHourAgo, anHourAgo)));
+
+        let data = await readThroughCache.get(testKey, readFunctionReturningData(testData), 60, () => true, () => true);
+
+        let actualInRedis = JSON.parse(await getAsync(testKey));
+
+        expect(data).toEqual(testData);
+
+        expect(actualInRedis.data).toEqual(testData)
+        expect(actualInRedis.meta.created).toBeCloseTo(anHourAgo, -1)
+        expect(actualInRedis.meta.updated).toBeCloseTo(now, -1)
     })
 
     const readFunctionReturningData = data => new Promise(resolve => resolve(data));
 
     const readFunctionReturningAnError = err => new Promise((resolve, reject) => reject(new Error(err)));
 
-    const toRaw = (someData) => {
+    const toRaw = (someData, createdTime = now, updatedTime = now) => {
         return {
             data: someData,
-            meta: {created: callTime}
+            meta: {
+                created: createdTime,
+                updated: updatedTime
+            }
         }
     };
-
 
     afterAll(done => {
         redisClient.quit(done());

@@ -12,8 +12,8 @@ class ReadThroughCache {
 
     setClient(client) {
         this.getAsync = promisify(client.get).bind(client);
-        this.setExAsync = promisify(client.setex).bind(client);
         this.setAsync = promisify(client.set).bind(client);
+        this.delAsync = promisify(client.del).bind(client);
     }
 
     async get(key,
@@ -23,42 +23,58 @@ class ReadThroughCache {
               freshDataValidator = () => true) {
 
         let redisData = null;
+        const callTime = Math.round(new Date().getTime() / 1000);
         try {
             redisData = await this.getAsync(key);
         } catch (e) {
-            return this.readData(key, ttl, readFunction, freshDataValidator);
+            return this.readData(key, readFunction, freshDataValidator, false, {}, callTime);
         }
         if (redisData == null) {
-            return this.readData(key, ttl, readFunction, freshDataValidator);
+            return this.readData(key, readFunction, freshDataValidator, false, {}, callTime);
         }
         try {
             const parsedJson = JSON.parse(redisData)
             const data = parsedJson.data;
             const meta = parsedJson.meta;
-            switch (cachedDataValidator(data, meta)) {
-                case ReadThroughCache.Valid: return data;
-                case ReadThroughCache.Unstable: return this.readData(key, ttl, readFunction, freshDataValidator, true);
-                default: return this.readData(key, ttl, readFunction, freshDataValidator, false);
+            const cacheExpired = (ttl > 0) && ((meta.updated + ttl) < callTime)
+            if (cacheExpired) {
+                return this.readData(key, readFunction, freshDataValidator, false, meta, callTime);
+            } else {
+                switch (cachedDataValidator(data, meta)) {
+                    case ReadThroughCache.Valid:
+                        return data;
+                    case ReadThroughCache.Unstable:
+                        return this.readData(key, readFunction, freshDataValidator, true, meta, callTime);
+                    default:
+                        return this.readData(key, readFunction, freshDataValidator, false, meta, callTime);
+                }
             }
         } catch (e) {
-            return this.readData(key, ttl, readFunction, freshDataValidator);
+            return this.readData(key, readFunction, freshDataValidator, false, {}, callTime);
         }
     }
 
-    async readData(key, ttl, readFunction, freshDataValidator, skipSaving) {
+    async readData(key, readFunction, freshDataValidator, skipSaving, meta = {}, callTime) {
         let freshData = await readFunction;
 
-        if (!skipSaving && freshDataValidator(freshData)) {
+        if (!skipSaving) {
+            if (freshDataValidator(freshData)) {
+                let createdTime, updateTime;
+                if (Object.entries(meta).length === 0) {
+                    createdTime = callTime;
+                    updateTime = callTime;
+                } else {
+                    createdTime = meta.created;
+                    updateTime = callTime;
+                }
 
-            const callTime = Math.round(new Date().getTime() / 1000);
-            let dataWithMeta = {data: freshData, meta: {created: callTime}}
-            if (ttl > 0) {
-                this.setExAsync(key, ttl, JSON.stringify(dataWithMeta)).then()
-            } else {
+                let dataWithMeta = {data: freshData, meta: {created: createdTime, updated: updateTime}}
                 this.setAsync(key, JSON.stringify(dataWithMeta)).then()
+
+            } else {
+                this.delAsync(key).then()
             }
         }
-
         return freshData;
     }
 }
