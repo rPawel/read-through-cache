@@ -1,6 +1,6 @@
 {
   "name": "redis-read-through-cache",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "A simple Read-Through Cache implementation allowing to wrap your slow function and cache it's responses in Redis.",
   "main": "index.js",
   "scripts": {
@@ -13,8 +13,8 @@
     "redis": "^3.0.2"
   },
   "devDependencies": {
-    "jest": "^26.4.0",
-    "redis-mock": "^0.51.0"
+    "jest": "^27.4.5",
+    "redis-mock": "^0.56.3"
   },
   "directories": {
     "test": "test"

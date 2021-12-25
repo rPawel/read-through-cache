@@ -21,10 +21,12 @@ describe('get - upon checking for key', () => {
     })
 
     it('redis returns an error so readFunction is used', done => {
+        const readFunction = jest.fn().mockImplementation(() => testData)
         faultyReadThroughCache
-            .get(testKey, readFunctionReturningData(testData), 0)
+            .get(testKey, readFunction, 0)
             .then((data) => {
                 expect(data).toEqual(testData);
+                expect(readFunction).toHaveBeenCalledTimes(1);
                 done();
             });
 
@@ -32,10 +34,12 @@ describe('get - upon checking for key', () => {
 
     it('cache is empty so readFunction is used', done => {
 
+        const readFunction = jest.fn().mockImplementation(() => testData)
         readThroughCache
-            .get(testKey, readFunctionReturningData(testData), 0)
+            .get(testKey, readFunction, 0)
             .then((data) => {
                 expect(data).toEqual(testData);
+                expect(readFunction).toHaveBeenCalledTimes(1);
                 done();
             });
 
@@ -45,12 +49,15 @@ describe('get - upon checking for key', () => {
 
         setAsync(testKey, JSON.stringify(toRaw(testData, anHourAgo, anHourAgo))).then(() => {
 
+            const readFunction = jest.fn();
             readThroughCache
-                .get(testKey, readFunctionReturningData(null), 0)
+                .get(testKey, readFunction, 0)
                 .then((data) => {
                     expect(data).toEqual(testData);
+                    expect(readFunction).not.toHaveBeenCalled();
                     done();
                 });
+
 
         })
     })
@@ -59,26 +66,24 @@ describe('get - upon checking for key', () => {
 
         setAsync(testKey, JSON.stringify(toRaw(emptyData))).then(() => {
 
+            const readFunction = jest.fn().mockImplementation(() => testData)
             readThroughCache
-                .get(testKey, readFunctionReturningData(testData), 0, () => false)
+                .get(testKey, readFunction, 0, () => false)
                 .then((data) => {
                     expect(data).toEqual(testData)
+                    expect(readFunction).toHaveBeenCalledTimes(1);
                     done();
                 });
 
         });
     })
 
-    it('readFunction is called, but it returns an error', async () => {
-
-        let error = 'read function error';
-        await expect(readThroughCache.get(testKey, readFunctionReturningAnError(error))).rejects.toThrow();
-    })
-
     it('readFunction is called, valid data is stored in cache and returned', async () => {
 
-        await readThroughCache.get(testKey, readFunctionReturningData(testData));
+        const readFunction = jest.fn().mockImplementation(() => testData)
+        await readThroughCache.get(testKey, readFunction);
         let actualInRedis = JSON.parse(await getAsync(testKey));
+        expect(readFunction).toHaveBeenCalledTimes(1);
         expect(actualInRedis.data).toEqual(testData);
         expect(actualInRedis.meta.created).toBeCloseTo(now, -1)
         expect(actualInRedis.meta.updated).toBeCloseTo(now, -1)
@@ -86,41 +91,43 @@ describe('get - upon checking for key', () => {
     })
 
 
-    it('readFunction is called, data saving fails, data still returned', async () => {
-
-        await readThroughCache.get(testKey, readFunctionReturningData(testData));
-    })
-
     it('readFunction is called, cache is empty, read data is invalid hence not stored, data is returned', async () => {
 
-        let data = await readThroughCache.get(testKey, readFunctionReturningData(testData), 0, () => false, () => false);
+        const readFunction = jest.fn().mockImplementation(() => testData)
+
+        let data = await readThroughCache.get(testKey, readFunction, 0, () => false, () => false);
 
         let actualInRedis = await getAsync(testKey);
 
+        expect(readFunction).toHaveBeenCalledTimes(1);
         expect(data).toEqual(testData);
         expect(actualInRedis).toEqual(null);
     })
 
     it('readFunction is called, cached data is invalid, read data is invalid hence not stored, cache is removed, data is returned', async () => {
 
+        const readFunction = jest.fn().mockImplementation(() => testData)
         await setAsync(testKey, JSON.stringify(toRaw(emptyData, anHourAgo, anHourAgo)));
 
-        let data = await readThroughCache.get(testKey, readFunctionReturningData(testData), 0, () => false, () => false);
+        let data = await readThroughCache.get(testKey, readFunction, 0, () => false, () => false);
 
         let actualInRedis = await getAsync(testKey);
 
+        expect(readFunction).toHaveBeenCalledTimes(1);
         expect(data).toEqual(testData);
         expect(actualInRedis).toEqual(null);
     })
 
     it('readFunction is called, cached data is unstable, read data is valid but not stored, data is returned', async () => {
 
+        const readFunction = jest.fn().mockImplementation(() => testData)
         await setAsync(testKey, JSON.stringify(toRaw(testData2, anHourAgo, anHourAgo)));
 
-        let data = await readThroughCache.get(testKey, readFunctionReturningData(testData), 0, () => ReadThroughCache.Unstable, () => false);
+        let data = await readThroughCache.get(testKey, readFunction, 0, () => ReadThroughCache.Unstable, () => false);
 
         let actualInRedis = JSON.parse(await getAsync(testKey));
 
+        expect(readFunction).toHaveBeenCalledTimes(1);
         expect(data).toEqual(testData);
         expect(actualInRedis.data).toEqual(testData2);
         expect(actualInRedis.meta.created).toBeCloseTo(anHourAgo, -1)
@@ -129,12 +136,14 @@ describe('get - upon checking for key', () => {
 
     it('readFunction is called, cached data was valid but has just expired, read data is invalid hence the cache is pruned', async () => {
 
+        const readFunction = jest.fn().mockImplementation(() => testData)
         await setAsync(testKey, JSON.stringify(toRaw(testData, anHourAgo, anHourAgo)));
 
-        let data = await readThroughCache.get(testKey, readFunctionReturningData(testData), 60, () => true, () => false);
+        let data = await readThroughCache.get(testKey, readFunction, 60, () => true, () => false);
 
         let actualInRedis = await getAsync(testKey);
 
+        expect(readFunction).toHaveBeenCalledTimes(1);
         expect(data).toEqual(testData);
         expect(actualInRedis).toEqual(null)
 
@@ -142,22 +151,19 @@ describe('get - upon checking for key', () => {
 
     it('readFunction is called, cached data was valid but has just expired, read data is valid hence the cache is extended', async () => {
 
+        const readFunction = jest.fn().mockImplementation(() => testData)
         await setAsync(testKey, JSON.stringify(toRaw(testData, anHourAgo, anHourAgo)));
 
-        let data = await readThroughCache.get(testKey, readFunctionReturningData(testData), 60, () => true, () => true);
+        let data = await readThroughCache.get(testKey, readFunction, 60, () => true, () => true);
 
         let actualInRedis = JSON.parse(await getAsync(testKey));
 
+        expect(readFunction).toHaveBeenCalledTimes(1);
         expect(data).toEqual(testData);
-
         expect(actualInRedis.data).toEqual(testData)
         expect(actualInRedis.meta.created).toBeCloseTo(anHourAgo, -1)
         expect(actualInRedis.meta.updated).toBeCloseTo(now, -1)
     })
-
-    const readFunctionReturningData = data => new Promise(resolve => resolve(data));
-
-    const readFunctionReturningAnError = err => new Promise((resolve, reject) => reject(new Error(err)));
 
     const toRaw = (someData, createdTime = now, updatedTime = now) => {
         return {

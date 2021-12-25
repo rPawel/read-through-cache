@@ -55,7 +55,7 @@ class ReadThroughCache {
     }
 
     async readData(key, readFunction, freshDataValidator, skipSaving, meta = {}, callTime) {
-        let freshData = await readFunction;
+        let freshData = readFunction();
 
         if (!skipSaving) {
             if (freshDataValidator(freshData)) {
